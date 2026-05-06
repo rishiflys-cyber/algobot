@@ -17,15 +17,21 @@ async function updateCapital(){
 
     kc.setAccessToken(global.ACCESS_TOKEN);
 
-    const margins = await kc.getMargins("equity");
+    const m = await kc.getMargins("equity");
 
-    if(!margins){
-        state.debug = "NO MARGINS DATA";
+    if(!m || !m.available){
+        state.debug = "NO MARGIN DATA";
         return;
     }
 
-    state.capital = margins.available.cash || 0;
-    state.debug = JSON.stringify(margins.available);
+    // 🔥 REAL FIX
+    state.capital = Math.max(
+        m.available.cash || 0,
+        m.available.live_balance || 0,
+        m.available.opening_balance || 0
+    );
+
+    state.debug = JSON.stringify(m.available);
 
   }catch(e){
     state.debug = e.message;

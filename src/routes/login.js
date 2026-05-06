@@ -15,7 +15,6 @@ router.get("/redirect", async (req,res)=>{
         );
 
         global.ACCESS_TOKEN = session.access_token;
-        global.USER_ID = session.user_id;
 
         res.send("TOKEN READY");
 
