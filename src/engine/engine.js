@@ -1,15 +1,20 @@
 
 const fs = require("fs");
+const path = require("path");
 const https = require("https");
 const { KiteConnect } = require("kiteconnect");
 const state = require("../core/state");
 
 const kc = new KiteConnect({ api_key: process.env.API_KEY });
+const TOKEN_PATH = path.join(process.cwd(), "token.txt");
 
 function getToken(){
   try{
-    return fs.readFileSync("token.txt","utf8");
+    const t = fs.readFileSync(TOKEN_PATH,"utf8");
+    state.tokenLoaded = true;
+    return t;
   }catch{
+    state.tokenLoaded = false;
     return null;
   }
 }
@@ -17,15 +22,20 @@ function getToken(){
 async function updateCapital(){
   try{
     const token = getToken();
-    if(!token) return;
+    if(!token){
+      state.error = "TOKEN NOT FOUND";
+      return;
+    }
 
     kc.setAccessToken(token);
+
     const m = await kc.getMargins();
 
     state.capital = m.equity.available.cash || 0;
+    state.error = "";
 
   }catch(e){
-    console.log("CAP FAIL", e.message);
+    state.error = e.message;
   }
 }
 
