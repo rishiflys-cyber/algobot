@@ -15,14 +15,14 @@ router.get("/redirect", async (req,res)=>{
             process.env.API_SECRET
         );
 
-        const token = session.access_token;
-
-        // SAVE TOKEN (CRITICAL FIX)
-        fs.writeFileSync("access_token.txt", token);
+        fs.writeFileSync("token.json", JSON.stringify({
+            access_token: session.access_token,
+            time: Date.now()
+        }));
 
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-        res.send("ACCESS_TOKEN: "+token+"<br>IP: "+ip);
+        res.send("LOGIN SUCCESS<br>IP: "+ip);
 
     }catch(e){
         res.send(e.message);
