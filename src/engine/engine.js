@@ -5,32 +5,30 @@ const state = require("../core/state");
 
 const kc = new KiteConnect({ api_key: process.env.API_KEY });
 
-function getToken(){
-    if(global.ACCESS_TOKEN){
-        state.tokenLoaded = true;
-        return global.ACCESS_TOKEN;
-    }
-    state.tokenLoaded = false;
-    return null;
-}
-
 async function updateCapital(){
   try{
-    const token = getToken();
-    if(!token){
-      state.error = "TOKEN NOT INITIALIZED";
+    if(!global.ACCESS_TOKEN){
+      state.tokenLoaded = false;
+      state.debug = "NO TOKEN";
       return;
     }
 
-    kc.setAccessToken(token);
+    state.tokenLoaded = true;
 
-    const m = await kc.getMargins();
+    kc.setAccessToken(global.ACCESS_TOKEN);
 
-    state.capital = m.equity.available.cash || 0;
-    state.error = "";
+    const margins = await kc.getMargins("equity");
+
+    if(!margins){
+        state.debug = "NO MARGINS DATA";
+        return;
+    }
+
+    state.capital = margins.available.cash || 0;
+    state.debug = JSON.stringify(margins.available);
 
   }catch(e){
-    state.error = e.message;
+    state.debug = e.message;
   }
 }
 
@@ -49,4 +47,4 @@ function updateIP(){
 setInterval(()=>{
   updateCapital();
   updateIP();
-},10000);
+},5000);
