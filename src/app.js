@@ -5,6 +5,6 @@ const app = express();
 app.use("/", require("./routes/login"));
 app.use("/", require("./routes/performance"));
 
-app.get("/", (req,res)=> res.send("SAFE TRADING ENGINE"));
+app.get("/", (req,res)=> res.send("BUILD FIX OK"));
 
 module.exports = app;
