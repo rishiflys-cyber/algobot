@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const { KiteConnect } = require("kiteconnect");
+const state = require("../core/state");
 
 const kc = new KiteConnect({ api_key: process.env.API_KEY });
 
@@ -14,7 +15,9 @@ router.get("/redirect", async (req,res)=>{
             process.env.API_SECRET
         );
 
-        global.ACCESS_TOKEN = session.access_token;
+        // ✅ FIX: persist inside state (NOT global)
+        state.accessToken = session.access_token;
+        state.tokenLoaded = true;
 
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
