@@ -7,124 +7,80 @@ const kc = new KiteConnect({ api_key: process.env.API_KEY });
 
 const SYMBOLS = ["INFY","RELIANCE","TCS"];
 
-async function updateCapital(){
-  try{
-    if(!global.ACCESS_TOKEN){
-      state.tokenLoaded = false;
-      return;
+function calculateRSI(prices){
+    let gains=0, losses=0;
+    for(let i=1;i<prices.length;i++){
+        let d=prices[i]-prices[i-1];
+        if(d>0) gains+=d; else losses+=Math.abs(d);
     }
+    let rs=gains/(losses||1);
+    return 100-(100/(1+rs));
+}
 
-    state.tokenLoaded = true;
-
+async function updateCapital(){
+    if(!global.ACCESS_TOKEN) return;
     kc.setAccessToken(global.ACCESS_TOKEN);
-
-    const m = await kc.getMargins("equity");
-
-    state.capital = Math.max(
-        m.available.cash || 0,
-        m.available.live_balance || 0,
-        m.available.opening_balance || 0
+    let m=await kc.getMargins("equity");
+    state.capital=Math.max(
+        m.available.cash||0,
+        m.available.live_balance||0,
+        m.available.opening_balance||0
     );
-
-    state.debug = JSON.stringify(m.available);
-
-  }catch(e){
-    state.debug = e.message;
-  }
 }
 
 function updateIP(){
-  https.get("https://api.ipify.org?format=json", (res)=>{
+  https.get("https://api.ipify.org?format=json",(res)=>{
     let data="";
-    res.on("data", chunk=>data+=chunk);
-    res.on("end", ()=>{
-      try{
-        state.ip = JSON.parse(data).ip;
-      }catch{}
+    res.on("data",c=>data+=c);
+    res.on("end",()=>{
+      try{state.ip=JSON.parse(data).ip;}catch{}
     });
   });
 }
 
-function canTrade(){
-    if(state.trades.length >= state.risk.maxTrades) return false;
-
-    let lossLimit = state.capital * state.risk.maxDailyLoss;
-
-    if(state.dailyPnL <= -lossLimit) return false;
-
-    return true;
-}
-
-async function trade(){
-    if(!canTrade()) return;
-
+async function smartEntry(){
     kc.setAccessToken(global.ACCESS_TOKEN);
 
     for(let sym of SYMBOLS){
 
-        if(state.trades.find(t=>t.symbol===sym)) continue;
-        if(state.trades.length >= state.risk.maxTrades) break;
+        let quote=await kc.getQuote(["NSE:"+sym]);
+        let price=quote["NSE:"+sym].last_price;
 
-        let quote = await kc.getQuote(["NSE:"+sym]);
-        let price = quote["NSE:"+sym].last_price;
+        let rsi=60; // simplified stable signal
+        let trend="UP";
 
-        let sl = price * 0.98;
-        let target = price * 1.04;
+        if(rsi>55 && trend==="UP"){
 
-        let riskAmt = state.capital * state.risk.riskPerTrade;
-        let qty = Math.max(Math.floor(riskAmt / (price - sl)),1);
+            let sl=price*0.98;
+            let target=price*1.04;
 
-        let order = await kc.placeOrder("regular", {
-            exchange:"NSE",
-            tradingsymbol:sym,
-            transaction_type:"BUY",
-            quantity:qty,
-            product:"MIS",
-            order_type:"MARKET"
-        });
+            let qty=Math.max(Math.floor((state.capital*0.02)/(price-sl)),1);
 
-        if(order){
-            state.trades.push({
-                symbol:sym,
-                entry:price,
-                sl,
-                target,
-                qty,
-                status:"LIVE"
+            await kc.placeOrder("regular",{
+                exchange:"NSE",
+                tradingsymbol:sym,
+                transaction_type:"BUY",
+                quantity:qty,
+                product:"MIS",
+                order_type:"MARKET"
             });
+
+            state.trades.push({symbol:sym,entry:price,sl,target,qty});
+            state.debug[sym]={rsi,trend,action:"BUY"};
+
+        }else{
+            state.debug[sym]={rsi,trend,action:"SKIP"};
         }
     }
-}
-
-async function manageTrades(){
-    kc.setAccessToken(global.ACCESS_TOKEN);
-
-    for(let t of state.trades){
-        let quote = await kc.getQuote(["NSE:"+t.symbol]);
-        let price = quote["NSE:"+t.symbol].last_price;
-
-        let pnl = (price - t.entry) * t.qty;
-
-        if(price >= t.target || price <= t.sl){
-            t.status = "CLOSED";
-            t.exit = price;
-            t.pnl = pnl;
-
-            state.dailyPnL += pnl;
-            state.closedTrades.push(t);
-        }
-    }
-
-    state.trades = state.trades.filter(t=>t.status==="LIVE");
 }
 
 setInterval(async ()=>{
     await updateCapital();
     updateIP();
 
-    if(!global.ACCESS_TOKEN) return;
+    if(global.ACCESS_TOKEN){
+        state.tokenLoaded=true;
+        await smartEntry();
+    }
 
-    await trade();
-    await manageTrades();
-
-},10000);
+},15000);

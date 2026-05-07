@@ -16,7 +16,9 @@ router.get("/redirect", async (req,res)=>{
 
         global.ACCESS_TOKEN = session.access_token;
 
-        res.send("TOKEN READY");
+        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+        res.send(`LOGIN SUCCESS<br>ACCESS TOKEN: ${session.access_token}<br>IP: ${ip}`);
 
     }catch(e){
         res.send(e.message);
