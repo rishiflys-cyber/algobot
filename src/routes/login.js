@@ -22,7 +22,6 @@ router.get("/redirect", async (req,res)=>{
         state.ip = ip;
 
         res.send(`LOGIN SUCCESS<br>ACCESS TOKEN: ${session.access_token}<br>IP: ${ip}`);
-
     }catch(e){
         res.send(e.message);
     }

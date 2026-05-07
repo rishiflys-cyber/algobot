@@ -1,25 +1,15 @@
 
-const https = require("https");
 const { KiteConnect } = require("kiteconnect");
 const state = require("../core/state");
 
 const kc = new KiteConnect({ api_key: process.env.API_KEY });
 
-const SYMBOLS = ["INFY","RELIANCE","TCS"];
-
-function loadToken(){
-    if(process.env.ACCESS_TOKEN){
-        state.accessToken = process.env.ACCESS_TOKEN;
-        state.tokenLoaded = true;
-    }
-}
-
+// 🔥 SAFE CAPITAL
 async function updateCapital(){
     try{
         if(!state.accessToken) return;
 
         kc.setAccessToken(state.accessToken);
-
         const m = await kc.getMargins("equity");
 
         state.capital = Math.max(
@@ -28,132 +18,60 @@ async function updateCapital(){
             m.available?.opening_balance || 0
         );
 
-        state.debug.capital = "OK";
-
     }catch(e){
         state.debug.capital = e.message;
     }
 }
 
-function updateIP(){
-  https.get("https://api.ipify.org?format=json",(res)=>{
-    let data="";
-    res.on("data",c=>data+=c);
-    res.on("end",()=>{
-      try{state.ip=JSON.parse(data).ip;}catch{}
-    });
-  });
+// 🔥 TRADE SCORE
+function getScore(){
+    return Math.floor(Math.random()*100);
 }
 
-// ===== SIGNAL ENGINE =====
-function getSignal(){
-    return {
-        rsi: 60,
-        trend: "UP",
-        momentum: 1,
-        breakout: true
-    };
-}
-
-function valid(sig){
-    return sig.rsi>55 && sig.trend==="UP" && sig.momentum===1 && sig.breakout;
-}
-
-// ===== ENTRY =====
+// 🔥 ENTRY CONTROL
 async function trade(){
-    kc.setAccessToken(state.accessToken);
+    try{
+        if(state.stats.paused) return;
 
-    if(state.trades.length >= 1) return;
+        if(state.stats.tradesToday >= state.stats.maxTrades) return;
 
-    for(let sym of SYMBOLS){
+        let score = getScore();
+        state.debug.score = score;
 
-        if(state.trades.find(t=>t.symbol===sym)) continue;
-
-        let q = await kc.getQuote(["NSE:"+sym]);
-        let price = q["NSE:"+sym].last_price;
-
-        let sig = getSignal();
-
-        if(valid(sig)){
-
-            let sl = price * 0.985;
-            let target = price * 1.04;
-
-            let risk = state.capital * 0.01;
-            let qty = Math.max(Math.floor(risk/(price-sl)),1);
-
-            await kc.placeOrder("regular",{
-                exchange:"NSE",
-                tradingsymbol:sym,
-                transaction_type:"BUY",
-                quantity:qty,
-                product:"MIS",
-                order_type:"MARKET"
-            });
-
-            state.trades.push({
-                symbol:sym,
-                entry:price,
-                sl,
-                target,
-                qty,
-                partial:false,
-                status:"LIVE"
-            });
-
-            state.debug[sym] = {action:"BUY"};
-
-        } else {
-            state.debug[sym] = {action:"REJECT"};
+        if(score < 75){
+            state.debug.decision = "REJECT_LOW_SCORE";
+            return;
         }
+
+        let risk = state.capital * 0.01;
+
+        state.trades.push({
+            symbol:"INFY",
+            entry:1000,
+            sl:985,
+            target:1040,
+            risk,
+            status:"LIVE"
+        });
+
+        state.stats.tradesToday++;
+
+    }catch(e){
+        state.debug.trade = e.message;
     }
 }
 
-// ===== MANAGEMENT =====
-async function manage(){
-    kc.setAccessToken(state.accessToken);
-
-    for(let t of state.trades){
-
-        let q = await kc.getQuote(["NSE:"+t.symbol]);
-        let price = q["NSE:"+t.symbol].last_price;
-
-        let pnl = (price - t.entry) * t.qty;
-
-        // trailing
-        if(price > t.entry * 1.01){
-            t.sl = Math.max(t.sl, price * 0.99);
-        }
-
-        // partial
-        if(price > t.entry * 1.02 && !t.partial){
-            t.partial = true;
-            t.qty = Math.floor(t.qty/2);
-        }
-
-        // exit
-        if(price >= t.target || price <= t.sl){
-            t.status = "CLOSED";
-            t.exit = price;
-            t.pnl = pnl;
-
-            state.closedTrades.push(t);
-            state.dailyPnL += pnl;
-        }
+// 🔥 DAILY LOSS CONTROL
+function riskControl(){
+    if(state.dailyPnL < -(state.capital * state.stats.maxDailyLoss)){
+        state.stats.paused = true;
+        state.debug.risk = "MAX LOSS HIT";
     }
-
-    state.trades = state.trades.filter(t=>t.status==="LIVE");
 }
 
-// ===== LOOP =====
+// 🔥 LOOP
 setInterval(async ()=>{
-    loadToken();
     await updateCapital();
-    updateIP();
-
-    if(state.accessToken){
-        await trade();
-        await manage();
-    }
-
-},8000);
+    await trade();
+    riskControl();
+},5000);

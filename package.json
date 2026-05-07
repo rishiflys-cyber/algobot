@@ -1,6 +1,6 @@
 {
   "name": "algobot",
-  "version": "9.0.0",
+  "version": "12.0.0",
   "main": "src/server.js",
   "scripts": { "start": "node src/server.js" },
   "dependencies": {
