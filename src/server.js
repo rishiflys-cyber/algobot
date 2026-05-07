@@ -8,4 +8,4 @@ process.on("unhandledRejection", (err) => {
 
 require("./engine/engine");
 
-app.listen(PORT, () => console.log("CONSISTENCY ENGINE LIVE", PORT));
+app.listen(PORT, () => console.log("MARKET FILTER ENGINE LIVE", PORT));
