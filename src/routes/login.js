@@ -1,31 +1,11 @@
 
 const express = require("express");
 const router = express.Router();
-const { KiteConnect } = require("kiteconnect");
-const state = require("../core/state");
 
-const kc = new KiteConnect({ api_key: process.env.API_KEY });
+router.get("/login",(req,res)=> res.send("Use existing token"));
 
-router.get("/login",(req,res)=> res.redirect(kc.getLoginURL()));
-
-router.get("/redirect", async (req,res)=>{
-    try{
-        const session = await kc.generateSession(
-            req.query.request_token,
-            process.env.API_SECRET
-        );
-
-        state.accessToken = session.access_token;
-        state.tokenLoaded = true;
-
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-        state.ip = ip;
-
-        res.send(`LOGIN SUCCESS<br>ACCESS TOKEN: ${session.access_token}<br>IP: ${ip}`);
-
-    }catch(e){
-        res.send(e.message);
-    }
+router.get("/redirect",(req,res)=>{
+    res.send("Token already set via ENV");
 });
 
 module.exports = router;

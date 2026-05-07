@@ -5,24 +5,33 @@ const state = require("../core/state");
 const kc = new KiteConnect({ api_key: process.env.API_KEY });
 
 const SYMBOL = "INFY";
-const TOKEN = 408065; // example instrument token (update if needed)
+const TOKEN = 408065;
 
-// ===== REAL DATA =====
+// ===== SAFE HELPERS =====
+function safeArray(arr){
+    return Array.isArray(arr) && arr.length > 0;
+}
 
+// ===== FETCH CANDLES =====
 async function getCandles(){
     kc.setAccessToken(state.accessToken);
 
     const to = new Date();
-    const from = new Date(to.getTime() - (60*60*1000)); // last 1 hour
+    const from = new Date(to.getTime() - (60*60*1000));
 
     const data = await kc.getHistoricalData(TOKEN, "5minute", from, to);
+
+    if(!safeArray(data)){
+        throw new Error("NO_CANDLE_DATA");
+    }
 
     return data;
 }
 
-// ===== INDICATORS =====
-
+// ===== INDICATORS (SAFE) =====
 function calcATR(data){
+    if(data.length < 2) return 0;
+
     let tr = 0;
     for(let i=1;i<data.length;i++){
         tr += Math.abs(data[i].high - data[i].low);
@@ -31,23 +40,31 @@ function calcATR(data){
 }
 
 function calcEMA(data){
+    if(data.length < 5) return data.at(-1)?.close || 0;
+
     let closes = data.map(c=>c.close);
-    return closes.slice(-5).reduce((a,b)=>a+b)/5;
+    let last5 = closes.slice(-5);
+
+    return last5.reduce((a,b)=>a+b,0)/last5.length;
 }
 
 function volumeSpike(data){
+    if(data.length < 10) return false;
+
     let volumes = data.map(c=>c.volume);
-    let avg = volumes.slice(-10).reduce((a,b)=>a+b)/10;
-    return volumes.at(-1) > avg * 1.5;
+    let last = volumes.at(-1);
+
+    let avg = volumes.slice(-10).reduce((a,b)=>a+b,0)/10;
+
+    return last > avg * 1.5;
 }
 
 // ===== MARKET FILTER =====
-
 function marketFilter(data){
 
     let atr = calcATR(data);
     let ema = calcEMA(data);
-    let last = data.at(-1).close;
+    let last = data.at(-1)?.close || 0;
     let vol = volumeSpike(data);
 
     state.debug.atr = atr;
@@ -63,7 +80,6 @@ function marketFilter(data){
 }
 
 // ===== TRADE =====
-
 async function trade(){
 
     try{
@@ -99,7 +115,6 @@ async function trade(){
 }
 
 // ===== SQUARE OFF =====
-
 function squareOff(){
     const now = new Date();
     const IST = new Date(now.toLocaleString("en-US",{timeZone:"Asia/Kolkata"}));
@@ -112,7 +127,6 @@ function squareOff(){
 }
 
 // ===== LOOP =====
-
 setInterval(async ()=>{
     if(state.accessToken){
         await trade();
