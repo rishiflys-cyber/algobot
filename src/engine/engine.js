@@ -4,107 +4,118 @@ const state = require("../core/state");
 
 const kc = new KiteConnect({ api_key: process.env.API_KEY });
 
-// ===== REAL FILTER CALCULATIONS =====
+const SYMBOL = "INFY";
+const TOKEN = 408065; // example instrument token (update if needed)
 
-// fake candles generator (replace later)
-function getCandles(){
-    let arr=[]
-    for(let i=0;i<20;i++){
-        arr.push(1000 + Math.random()*20)
-    }
-    return arr;
+// ===== REAL DATA =====
+
+async function getCandles(){
+    kc.setAccessToken(state.accessToken);
+
+    const to = new Date();
+    const from = new Date(to.getTime() - (60*60*1000)); // last 1 hour
+
+    const data = await kc.getHistoricalData(TOKEN, "5minute", from, to);
+
+    return data;
 }
 
-// ATR
+// ===== INDICATORS =====
+
 function calcATR(data){
-    let tr=0
+    let tr = 0;
     for(let i=1;i<data.length;i++){
-        tr += Math.abs(data[i]-data[i-1])
+        tr += Math.abs(data[i].high - data[i].low);
     }
-    return tr/(data.length-1)
+    return tr/(data.length-1);
 }
 
-// Volume spike (simulated)
-function volumeSpike(){
-    return Math.random() > 0.6
+function calcEMA(data){
+    let closes = data.map(c=>c.close);
+    return closes.slice(-5).reduce((a,b)=>a+b)/5;
 }
 
-// Trend (EMA)
-function trend(data){
-    let ema = data.slice(-5).reduce((a,b)=>a+b)/5
-    return data.at(-1) > ema ? "UP":"DOWN"
+function volumeSpike(data){
+    let volumes = data.map(c=>c.volume);
+    let avg = volumes.slice(-10).reduce((a,b)=>a+b)/10;
+    return volumes.at(-1) > avg * 1.5;
 }
 
 // ===== MARKET FILTER =====
-function marketFilter(){
-    let candles = getCandles()
 
-    let atr = calcATR(candles)
-    let vol = volumeSpike()
-    let tr = trend(candles)
+function marketFilter(data){
 
-    state.debug.atr = atr
-    state.debug.volumeSpike = vol
-    state.debug.trend = tr
+    let atr = calcATR(data);
+    let ema = calcEMA(data);
+    let last = data.at(-1).close;
+    let vol = volumeSpike(data);
 
-    if(atr < 2) return "LOW_VOLATILITY"
-    if(!vol) return "NO_VOLUME_SPIKE"
-    if(tr !== "UP") return "NO_TREND"
+    state.debug.atr = atr;
+    state.debug.ema = ema;
+    state.debug.lastPrice = last;
+    state.debug.volumeSpike = vol;
 
-    return "GOOD"
+    if(atr < 2) return "LOW_VOL";
+    if(!vol) return "NO_VOLUME";
+    if(last < ema) return "DOWN_TREND";
+
+    return "GOOD";
 }
 
 // ===== TRADE =====
+
 async function trade(){
 
-    if(state.stats.paused) return;
-    if(state.stats.tradesToday >= state.stats.maxTrades) return;
+    try{
+        if(state.stats.paused) return;
+        if(state.stats.tradesToday >= state.stats.maxTrades) return;
 
-    let m = marketFilter()
-    state.debug.marketStatus = m
+        const candles = await getCandles();
 
-    if(m !== "GOOD"){
-        state.debug.decision = "REJECT_" + m
-        return
+        let m = marketFilter(candles);
+        state.debug.market = m;
+
+        if(m !== "GOOD"){
+            state.debug.decision = "REJECT_" + m;
+            return;
+        }
+
+        let price = candles.at(-1).close;
+
+        state.trades.push({
+            symbol: SYMBOL,
+            entry: price,
+            sl: price * 0.985,
+            target: price * 1.04,
+            status: "LIVE"
+        });
+
+        state.stats.tradesToday++;
+        state.debug.decision = "REAL_TRADE";
+
+    }catch(e){
+        state.debug.error = e.message;
     }
-
-    state.trades.push({
-        symbol:"INFY",
-        entry:1000,
-        sl:985,
-        target:1040,
-        status:"LIVE"
-    })
-
-    state.stats.tradesToday++
-    state.debug.decision = "TRADE_TAKEN"
 }
 
-// ===== AUTO SQUARE OFF (2:45 PM IST) =====
-function squareOff(){
+// ===== SQUARE OFF =====
 
+function squareOff(){
     const now = new Date();
     const IST = new Date(now.toLocaleString("en-US",{timeZone:"Asia/Kolkata"}));
 
-    let hour = IST.getHours()
-    let min = IST.getMinutes()
-
-    if(hour === 14 && min >= 45){
-
-        state.trades.forEach(t=>{
-            t.status = "CLOSED"
-            t.exit = t.entry
-        })
-
-        state.closedTrades.push(...state.trades)
-        state.trades = []
-
-        state.debug.squareOff = "DONE_2_45_PM"
+    if(IST.getHours() === 14 && IST.getMinutes() >= 45){
+        state.closedTrades.push(...state.trades);
+        state.trades = [];
+        state.debug.squareOff = "DONE";
     }
 }
 
 // ===== LOOP =====
+
 setInterval(async ()=>{
-    await trade()
-    squareOff()
-},5000);
+    if(state.accessToken){
+        await trade();
+        squareOff();
+    }
+},10000);
