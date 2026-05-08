@@ -7,31 +7,30 @@ const kc = new KiteConnect({ api_key: process.env.API_KEY });
 const SYMBOL = "INFY";
 const TOKEN = 408065;
 
-// ===== SAFE HELPERS =====
-function safeArray(arr){
-    return Array.isArray(arr) && arr.length > 0;
-}
-
-// ===== FETCH CANDLES =====
 async function getCandles(){
-    kc.setAccessToken(state.accessToken);
+    try{
+        kc.setAccessToken(state.accessToken);
 
-    const to = new Date();
-    const from = new Date(to.getTime() - (60*60*1000));
+        const to = new Date();
+        const from = new Date(to.getTime() - (60*60*1000));
 
-    const data = await kc.getHistoricalData(TOKEN, "5minute", from, to);
+        const data = await kc.getHistoricalData(TOKEN, "5minute", from, to);
 
-    if(!safeArray(data)){
-        throw new Error("NO_CANDLE_DATA");
+        if(!data || data.length < 5){
+            state.debug.error = "NO_CANDLE_DATA";
+            return [];
+        }
+
+        return data;
+
+    }catch(e){
+        state.debug.error = e.message;
+        return [];
     }
-
-    return data;
 }
 
-// ===== INDICATORS (SAFE) =====
 function calcATR(data){
     if(data.length < 2) return 0;
-
     let tr = 0;
     for(let i=1;i<data.length;i++){
         tr += Math.abs(data[i].high - data[i].low);
@@ -40,46 +39,39 @@ function calcATR(data){
 }
 
 function calcEMA(data){
-    if(data.length < 5) return data.at(-1)?.close || 0;
-
+    if(data.length < 5) return 0;
     let closes = data.map(c=>c.close);
-    let last5 = closes.slice(-5);
-
-    return last5.reduce((a,b)=>a+b,0)/last5.length;
+    return closes.slice(-5).reduce((a,b)=>a+b,0)/5;
 }
 
 function volumeSpike(data){
     if(data.length < 10) return false;
-
     let volumes = data.map(c=>c.volume);
-    let last = volumes.at(-1);
-
     let avg = volumes.slice(-10).reduce((a,b)=>a+b,0)/10;
-
-    return last > avg * 1.5;
+    return volumes.at(-1) > avg * 1.5;
 }
 
-// ===== MARKET FILTER =====
 function marketFilter(data){
+
+    if(data.length === 0) return "NO_DATA";
 
     let atr = calcATR(data);
     let ema = calcEMA(data);
-    let last = data.at(-1)?.close || 0;
+    let last = data.at(-1).close;
     let vol = volumeSpike(data);
 
     state.debug.atr = atr;
     state.debug.ema = ema;
-    state.debug.lastPrice = last;
+    state.debug.last = last;
     state.debug.volumeSpike = vol;
 
-    if(atr < 2) return "LOW_VOL";
+    if(atr === 0) return "LOW_DATA";
     if(!vol) return "NO_VOLUME";
     if(last < ema) return "DOWN_TREND";
 
     return "GOOD";
 }
 
-// ===== TRADE =====
 async function trade(){
 
     try{
@@ -114,7 +106,6 @@ async function trade(){
     }
 }
 
-// ===== SQUARE OFF =====
 function squareOff(){
     const now = new Date();
     const IST = new Date(now.toLocaleString("en-US",{timeZone:"Asia/Kolkata"}));
@@ -126,7 +117,6 @@ function squareOff(){
     }
 }
 
-// ===== LOOP =====
 setInterval(async ()=>{
     if(state.accessToken){
         await trade();

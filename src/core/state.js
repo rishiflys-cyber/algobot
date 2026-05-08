@@ -4,8 +4,8 @@ module.exports = {
     trades: [],
     closedTrades: [],
     dailyPnL: 0,
-    tokenLoaded: true,
-    accessToken: process.env.ACCESS_TOKEN || "",
+    tokenLoaded: false,
+    accessToken: "",
     ip: "",
     debug: {},
     stats: {
