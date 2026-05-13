@@ -1,8 +1,11 @@
 
 module.exports = {
-    capital: 0,
-    trades: [],
-    activeOrderId: null,
-    lock: false,
-    debug: {}
+  trades: [],
+  closedTrades: [],
+  debug: {},
+  recovery: {
+    reconciled: 0,
+    recovered: 0,
+    mismatches: 0
+  }
 };

@@ -1,9 +1,8 @@
 {
-  "name": "algobot",
-  "version": "21.0.0",
-  "main": "src/server.js",
-  "scripts": { "start": "node src/server.js" },
-  "dependencies": {
-    "kiteconnect": "^4.0.0"
+  "name":"algobot",
+  "version":"22.0.0",
+  "main":"src/server.js",
+  "dependencies":{
+    "kiteconnect":"^4.0.0"
   }
 }
